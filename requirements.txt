@@ -2,4 +2,3 @@ flask
 openai
 requests
 gunicorn
-supabase
