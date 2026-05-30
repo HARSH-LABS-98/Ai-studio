@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, jsonify
-from openai import OpenAI
 import os, requests as req
 
 app = Flask(__name__)
@@ -16,11 +15,27 @@ MODELS = {
     "gemma":    "google/gemma-7b-it:free"
 }
 
-def get_client():
-    return OpenAI(
-        api_key=OPENROUTER_API_KEY,
-        base_url="https://openrouter.ai/api/v1"
-    )
+def ai_call(messages, model="deepseek", max_tokens=4000):
+    for attempt in range(3):
+        try:
+            r = req.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": MODELS.get(model, MODELS["deepseek"]),
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": 0.7
+                },
+                timeout=60
+            )
+            return r.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            if attempt == 2:
+                raise Exception(str(e))
 
 def db_headers():
     return {
@@ -29,20 +44,6 @@ def db_headers():
         "Content-Type": "application/json",
         "Prefer": "return=representation"
     }
-
-def ai_call(messages, model="deepseek", max_tokens=4000):
-    for attempt in range(3):
-        try:
-            r = get_client().chat.completions.create(
-                model=MODELS.get(model, MODELS["deepseek"]),
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.7
-            )
-            return r.choices[0].message.content
-        except Exception as e:
-            if attempt == 2:
-                raise Exception(str(e))
 
 @app.route("/")
 def home():
@@ -132,7 +133,7 @@ def get_projects():
 @app.route("/api/projects/<int:pid>", methods=["GET"])
 def get_project(pid):
     try:
-        r = req.get(
+        r    = req.get(
             f"{SUPABASE_URL}/rest/v1/projects?id=eq.{pid}&select=*",
             headers=db_headers()
         )
