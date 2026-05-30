@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request, jsonify
 from openai import OpenAI
-from supabase import create_client
 import os, requests as req
 
 app = Flask(__name__)
@@ -23,8 +22,13 @@ def get_client():
         base_url="https://openrouter.ai/api/v1"
     )
 
-def get_db():
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+def db_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
 
 def ai_call(messages, model="deepseek", max_tokens=4000):
     for attempt in range(3):
@@ -91,7 +95,7 @@ def edit_code():
         model       = data.get("model","deepseek")
         if not code or not instruction:
             return jsonify({"error":"Code and instruction required"})
-        system  = "You are an expert web developer. Edit the HTML code based on instruction. Return ONLY complete updated HTML, no markdown."
+        system  = "Edit the HTML code based on instruction. Return ONLY complete updated HTML, no markdown."
         updated = ai_call([
             {"role":"system","content":system},
             {"role":"user","content":f"Code:\n{code}\n\nInstruction: {instruction}"}
@@ -104,41 +108,48 @@ def edit_code():
 @app.route("/api/projects/save", methods=["POST"])
 def save_project():
     try:
-        data   = request.json
-        name   = data.get("name","")
-        code   = data.get("code","")
-        if not name or not code:
-            return jsonify({"error":"Name and code required"})
-        db     = get_db()
-        result = db.table("projects").insert({"name":name,"code":code}).execute()
-        return jsonify({"success":True,"id":result.data[0]["id"]})
+        data = request.json
+        r    = req.post(
+            f"{SUPABASE_URL}/rest/v1/projects",
+            headers=db_headers(),
+            json={"name":data.get("name",""),"code":data.get("code","")}
+        )
+        return jsonify({"success":True,"id":r.json()[0]["id"]})
     except Exception as e:
         return jsonify({"error":str(e)})
 
 @app.route("/api/projects", methods=["GET"])
 def get_projects():
     try:
-        db     = get_db()
-        result = db.table("projects").select("id,name,created_at").order("created_at",desc=True).limit(50).execute()
-        return jsonify({"projects":result.data})
+        r = req.get(
+            f"{SUPABASE_URL}/rest/v1/projects?select=id,name,created_at&order=created_at.desc&limit=50",
+            headers=db_headers()
+        )
+        return jsonify({"projects":r.json()})
     except Exception as e:
         return jsonify({"error":str(e)})
 
 @app.route("/api/projects/<int:pid>", methods=["GET"])
 def get_project(pid):
     try:
-        db     = get_db()
-        result = db.table("projects").select("*").eq("id",pid).execute()
-        if not result.data:
+        r = req.get(
+            f"{SUPABASE_URL}/rest/v1/projects?id=eq.{pid}&select=*",
+            headers=db_headers()
+        )
+        data = r.json()
+        if not data:
             return jsonify({"error":"Not found"})
-        return jsonify({"project":result.data[0]})
+        return jsonify({"project":data[0]})
     except Exception as e:
         return jsonify({"error":str(e)})
 
 @app.route("/api/projects/<int:pid>", methods=["DELETE"])
 def delete_project(pid):
     try:
-        get_db().table("projects").delete().eq("id",pid).execute()
+        req.delete(
+            f"{SUPABASE_URL}/rest/v1/projects?id=eq.{pid}",
+            headers=db_headers()
+        )
         return jsonify({"success":True})
     except Exception as e:
         return jsonify({"error":str(e)})
