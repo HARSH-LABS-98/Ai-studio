@@ -4,10 +4,10 @@ import requests as req
 
 app = Flask(__name__)
 
-GROQ_API_KEY   = os.environ.get("GROQ_API_KEY")
-SUPABASE_URL   = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY   = os.environ.get("SUPABASE_KEY")
-VERCEL_TOKEN   = os.environ.get("VERCEL_TOKEN")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+VERCEL_TOKEN = os.environ.get("VERCEL_TOKEN")
 
 def call_ai(messages, max_tokens=2000):
     try:
@@ -18,7 +18,7 @@ def call_ai(messages, max_tokens=2000):
                 "Content-Type": "application/json"
             },
             json={
-                "llama-3.1-8b-instant",
+                "model": "llama-3.1-8b-instant",
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "temperature": 0.7
@@ -55,28 +55,24 @@ def test():
 @app.route("/api/generate", methods=["POST"])
 def generate():
     try:
-        data   = request.get_json(force=True, silent=True) or {}
+        data = request.get_json(force=True, silent=True) or {}
         prompt = data.get("prompt", "").strip()
         if not prompt:
             return jsonify({"error": "No prompt"})
         if not GROQ_API_KEY:
             return jsonify({"error": "GROQ_API_KEY not set"})
-
         result = call_ai([
             {"role": "system", "content": "You are an expert web developer. Generate a COMPLETE single-file HTML app. Return ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no backticks, no explanation. All CSS in <style> tags, all JS in <script> tags. Dark theme, beautiful, fully functional."},
             {"role": "user", "content": f"Build this app: {prompt}"}
         ], max_tokens=2000)
-
         if not result:
             return jsonify({"error": "AI failed. Try again."})
-
         code = result.strip().replace("```html", "").replace("```", "").strip()
-        idx  = code.find("<!DOCTYPE")
+        idx = code.find("<!DOCTYPE")
         if idx == -1:
             idx = code.find("<html")
         if idx != -1:
             code = code[idx:]
-
         return jsonify({"code": code})
     except Exception as e:
         return jsonify({"error": str(e)})
@@ -84,7 +80,7 @@ def generate():
 @app.route("/api/chat", methods=["POST"])
 def chat():
     try:
-        data     = request.get_json(force=True, silent=True) or {}
+        data = request.get_json(force=True, silent=True) or {}
         messages = data.get("messages", [])
         if not messages:
             return jsonify({"error": "No messages"})
@@ -99,8 +95,8 @@ def chat():
 @app.route("/api/edit", methods=["POST"])
 def edit_code():
     try:
-        data        = request.get_json(force=True, silent=True) or {}
-        code        = data.get("code", "").strip()
+        data = request.get_json(force=True, silent=True) or {}
+        code = data.get("code", "").strip()
         instruction = data.get("instruction", "").strip()
         if not code or not instruction:
             return jsonify({"error": "Code and instruction required"})
@@ -119,7 +115,7 @@ def edit_code():
 def save_project():
     try:
         data = request.get_json(force=True, silent=True) or {}
-        r    = req.post(
+        r = req.post(
             f"{SUPABASE_URL}/rest/v1/projects",
             headers=db_headers(),
             json={"name": data.get("name", "Untitled")[:100], "code": data.get("code", "")},
@@ -145,7 +141,7 @@ def get_projects():
 @app.route("/api/projects/<int:pid>", methods=["GET"])
 def get_project(pid):
     try:
-        r    = req.get(f"{SUPABASE_URL}/rest/v1/projects?id=eq.{pid}&select=*", headers=db_headers(), timeout=10)
+        r = req.get(f"{SUPABASE_URL}/rest/v1/projects?id=eq.{pid}&select=*", headers=db_headers(), timeout=10)
         data = r.json()
         if not data:
             return jsonify({"error": "Not found"})
