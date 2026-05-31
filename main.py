@@ -18,7 +18,7 @@ def call_ai(messages, max_tokens=2000):
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama3-8b-8192",
+                "llama-3.1-8b-instant",
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "temperature": 0.7
