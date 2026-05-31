@@ -1,5 +1,5 @@
-.            {"role":"user","content":f"Code:\n{code}\n\nInstruction: {instruction}"}
-        ], model=model)
+            {"role":"user","content":f"Code:\n{code}\n\nInstruction: {instruction}"}
+        , model=model)
         updated = updated.replace("```html","").replace("```","").strip()
         return jsonify({"code":updated})
     except Exception as e:
