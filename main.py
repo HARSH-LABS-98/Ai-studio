@@ -4,17 +4,17 @@ import requests as req
 
 app = Flask(__name__)
 
-GROQ_API_KEY       = os.environ.get("GROQ_API_KEY")
-SUPABASE_URL       = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY       = os.environ.get("SUPABASE_KEY")
-VERCEL_TOKEN       = os.environ.get("VERCEL_TOKEN")
+GROQ_API_KEY   = os.environ.get("GROQ_API_KEY")
+SUPABASE_URL   = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY   = os.environ.get("SUPABASE_KEY")
+VERCEL_TOKEN   = os.environ.get("VERCEL_TOKEN")
 
-def call_ai(messages, model="llama3-8b-8192", max_tokens=2000):
+def call_ai(messages, max_tokens=2000):
     try:
         r = req.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+                "Authorization": f"Bearer {GROQ_API_KEY}",
                 "Content-Type": "application/json"
             },
             json={
@@ -23,8 +23,7 @@ def call_ai(messages, model="llama3-8b-8192", max_tokens=2000):
                 "max_tokens": max_tokens,
                 "temperature": 0.7
             },
-            timeout=25,
-            stream=False
+            timeout=25
         )
         if r.status_code == 200:
             return r.json()["choices"][0]["message"]["content"]
@@ -34,39 +33,52 @@ def call_ai(messages, model="llama3-8b-8192", max_tokens=2000):
         print(f"Groq failed: {e}")
         return None
 
+def db_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+@app.route("/")
+def home():
+    return render_template("index.html")
+
+@app.route("/api/test")
+def test():
+    return jsonify({
+        "status": "ok",
+        "groq_key": GROQ_API_KEY[:10] if GROQ_API_KEY else "missing"
+    })
+
 @app.route("/api/generate", methods=["POST"])
 def generate():
     try:
         data   = request.get_json(force=True, silent=True) or {}
         prompt = data.get("prompt", "").strip()
         if not prompt:
-            return jsonify({"error": "No prompt provided"})
-        if not OPENROUTER_API_KEY:
-            return jsonify({"error": "OPENROUTER_API_KEY not set"})
-        system = (
-            "You are an expert web developer. "
-            "Generate a COMPLETE single-file HTML application. "
-            "Return ONLY raw HTML starting with <!DOCTYPE html>. "
-            "No markdown, no backticks, no explanation. "
-            "All CSS in <style> tags, all JS in <script> tags. "
-            "Dark theme, beautiful, fully functional."
-        )
+            return jsonify({"error": "No prompt"})
+        if not GROQ_API_KEY:
+            return jsonify({"error": "GROQ_API_KEY not set"})
+
         result = call_ai([
-            {"role": "system", "content": system},
+            {"role": "system", "content": "You are an expert web developer. Generate a COMPLETE single-file HTML app. Return ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no backticks, no explanation. All CSS in <style> tags, all JS in <script> tags. Dark theme, beautiful, fully functional."},
             {"role": "user", "content": f"Build this app: {prompt}"}
         ], max_tokens=2000)
+
         if not result:
-            return jsonify({"error": "AI failed. Please try again."})
+            return jsonify({"error": "AI failed. Try again."})
+
         code = result.strip().replace("```html", "").replace("```", "").strip()
-        if not code.startswith("<!"):
-            idx = code.find("<!DOCTYPE")
-            if idx == -1:
-                idx = code.find("<html")
-            if idx != -1:
-                code = code[idx:]
+        idx  = code.find("<!DOCTYPE")
+        if idx == -1:
+            idx = code.find("<html")
+        if idx != -1:
+            code = code[idx:]
+
         return jsonify({"code": code})
     except Exception as e:
-        print(f"Generate error: {e}")
         return jsonify({"error": str(e)})
 
 @app.route("/api/chat", methods=["POST"])
@@ -80,7 +92,7 @@ def chat():
             [{"role": "system", "content": "You are a helpful AI coding assistant. Be concise and practical."}] + messages,
             max_tokens=1000
         )
-        return jsonify({"reply": result or "Sorry, could not respond. Try again."})
+        return jsonify({"reply": result or "Could not respond. Try again."})
     except Exception as e:
         return jsonify({"error": str(e)})
 
@@ -124,8 +136,7 @@ def get_projects():
     try:
         r = req.get(
             f"{SUPABASE_URL}/rest/v1/projects?select=id,name,created_at&order=created_at.desc&limit=50",
-            headers=db_headers(),
-            timeout=10
+            headers=db_headers(), timeout=10
         )
         return jsonify({"projects": r.json() if r.status_code == 200 else []})
     except Exception as e:
