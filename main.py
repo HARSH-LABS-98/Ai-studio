@@ -4,68 +4,35 @@ import requests as req
 
 app = Flask(__name__)
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+GROQ_API_KEY       = os.environ.get("GROQ_API_KEY")
 SUPABASE_URL       = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY       = os.environ.get("SUPABASE_KEY")
 VERCEL_TOKEN       = os.environ.get("VERCEL_TOKEN")
 
-def call_ai(messages, model="meta-llama/llama-3-8b-instruct:free", max_tokens=2000):
-    models_to_try = [
-        "meta-llama/llama-3-8b-instruct:free",
-        "mistralai/mistral-7b-instruct:free",
-        "deepseek/deepseek-chat"
-    ]
-    for m in models_to_try:
-        try:
-            print(f"Trying: {m}")
-            r = req.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://ai-studio-rzhw.onrender.com",
-                    "X-Title": "AI Studio"
-                },
-                json={
-                    "model": m,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.7,
-                    "stream": False
-                },
-                timeout=25,
-                stream=False
-            )
-            if r.status_code == 200:
-                data = r.json()
-                if "choices" in data:
-                    return data["choices"][0]["message"]["content"]
-            else:
-                print(f"Error {r.status_code}: {r.text[:200]}")
-        except Exception as e:
-            print(f"Model {m} failed: {e}")
-            continue
-    return None
-
-def db_headers():
-    return {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
-
-@app.route("/")
-def home():
-    return render_template("index.html")
-
-@app.route("/api/test")
-def test():
-    return jsonify({
-        "status": "ok",
-        "has_key": bool(OPENROUTER_API_KEY),
-        "key_start": OPENROUTER_API_KEY[:10] if OPENROUTER_API_KEY else "missing"
-    })
+def call_ai(messages, model="llama3-8b-8192", max_tokens=2000):
+    try:
+        r = req.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama3-8b-8192",
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": 0.7
+            },
+            timeout=25,
+            stream=False
+        )
+        if r.status_code == 200:
+            return r.json()["choices"][0]["message"]["content"]
+        print(f"Groq error: {r.text[:200]}")
+        return None
+    except Exception as e:
+        print(f"Groq failed: {e}")
+        return None
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
