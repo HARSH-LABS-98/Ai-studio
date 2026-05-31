@@ -9,11 +9,11 @@ SUPABASE_URL       = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY       = os.environ.get("SUPABASE_KEY")
 VERCEL_TOKEN       = os.environ.get("VERCEL_TOKEN")
 
-def call_ai(messages, model="deepseek/deepseek-chat", max_tokens=3000):
+def call_ai(messages, model="meta-llama/llama-3-8b-instruct:free", max_tokens=2000):
     models_to_try = [
-        "deepseek/deepseek-chat",
         "meta-llama/llama-3-8b-instruct:free",
-        "mistralai/mistral-7b-instruct:free"
+        "mistralai/mistral-7b-instruct:free",
+        "deepseek/deepseek-chat"
     ]
     for m in models_to_try:
         try:
@@ -33,16 +33,15 @@ def call_ai(messages, model="deepseek/deepseek-chat", max_tokens=3000):
                     "temperature": 0.7,
                     "stream": False
                 },
-                timeout=120,
+                timeout=25,
                 stream=False
             )
-            print(f"Status: {r.status_code}")
             if r.status_code == 200:
                 data = r.json()
                 if "choices" in data:
                     return data["choices"][0]["message"]["content"]
             else:
-                print(f"Error: {r.text[:200]}")
+                print(f"Error {r.status_code}: {r.text[:200]}")
         except Exception as e:
             print(f"Model {m} failed: {e}")
             continue
@@ -77,7 +76,6 @@ def generate():
             return jsonify({"error": "No prompt provided"})
         if not OPENROUTER_API_KEY:
             return jsonify({"error": "OPENROUTER_API_KEY not set"})
-
         system = (
             "You are an expert web developer. "
             "Generate a COMPLETE single-file HTML application. "
@@ -89,11 +87,9 @@ def generate():
         result = call_ai([
             {"role": "system", "content": system},
             {"role": "user", "content": f"Build this app: {prompt}"}
-        ], max_tokens=3000)
-
+        ], max_tokens=2000)
         if not result:
             return jsonify({"error": "AI failed. Please try again."})
-
         code = result.strip().replace("```html", "").replace("```", "").strip()
         if not code.startswith("<!"):
             idx = code.find("<!DOCTYPE")
@@ -101,9 +97,7 @@ def generate():
                 idx = code.find("<html")
             if idx != -1:
                 code = code[idx:]
-
         return jsonify({"code": code})
-
     except Exception as e:
         print(f"Generate error: {e}")
         return jsonify({"error": str(e)})
@@ -115,14 +109,11 @@ def chat():
         messages = data.get("messages", [])
         if not messages:
             return jsonify({"error": "No messages"})
-
         result = call_ai(
             [{"role": "system", "content": "You are a helpful AI coding assistant. Be concise and practical."}] + messages,
-            model="meta-llama/llama-3-8b-instruct:free",
-            max_tokens=1500
+            max_tokens=1000
         )
         return jsonify({"reply": result or "Sorry, could not respond. Try again."})
-
     except Exception as e:
         return jsonify({"error": str(e)})
 
@@ -134,18 +125,14 @@ def edit_code():
         instruction = data.get("instruction", "").strip()
         if not code or not instruction:
             return jsonify({"error": "Code and instruction required"})
-
         result = call_ai([
             {"role": "system", "content": "Edit the HTML code based on instruction. Return ONLY complete updated HTML. No markdown."},
-            {"role": "user", "content": f"Code:\n{code[:2000]}\n\nInstruction: {instruction}"}
-        ], max_tokens=3000)
-
+            {"role": "user", "content": f"Code:\n{code[:1500]}\n\nInstruction: {instruction}"}
+        ], max_tokens=2000)
         if not result:
             return jsonify({"error": "AI failed to edit."})
-
         updated = result.strip().replace("```html", "").replace("```", "").strip()
         return jsonify({"code": updated})
-
     except Exception as e:
         return jsonify({"error": str(e)})
 
@@ -210,7 +197,7 @@ def deploy():
             "https://api.vercel.com/v13/deployments",
             headers={"Authorization": f"Bearer {VERCEL_TOKEN}", "Content-Type": "application/json"},
             json={"name": name, "files": [{"file": "index.html", "data": code}], "projectSettings": {"framework": None}},
-            timeout=30
+            timeout=25
         )
         result = r.json()
         if r.status_code in [200, 201]:
